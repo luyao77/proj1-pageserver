@@ -12,13 +12,13 @@
   located in ./pages  (where '.' is the directory from which this
   program is run).
 """
-
+import os
 import config    # Configure from .ini files and command line
 import logging   # Better than print statements
 logging.basicConfig(format='%(levelname)s:%(message)s',
                     level=logging.INFO)
 log = logging.getLogger(__name__)
-# Logging level may be overridden by configuration 
+# Logging level may be overridden by configuration
 
 import socket    # Basic TCP/IP communication on the internet
 import _thread   # Response computation runs concurrently with main program
@@ -83,16 +83,39 @@ def respond(sock):
     This server responds only to GET requests (not PUT, POST, or UPDATE).
     Any valid GET request is answered with an ascii graphic of a cat.
     """
+
+    valid = ".html", ".css"
+    invalid = ["~", "..", "//"]
+
     sent = 0
     request = sock.recv(1024)  # We accept only short requests
     request = str(request, encoding='utf-8', errors='strict')
+
+
     log.info("--- Received request ----")
     log.info("Request was {}\n***\n".format(request))
 
     parts = request.split()
-    if len(parts) > 1 and parts[0] == "GET":
-        transmit(STATUS_OK, sock)
-        transmit(CAT, sock)
+
+    if (len(parts) > 1 and parts[0] == "GET"):
+        if (any(s in parts[1] for s in invalid)):
+            transmit(STATUS_FORBIDDEN, sock)
+        elif not parts[1].endswith(valid):
+            transmit(STATUS_FORBIDDEN, sock)
+        else:
+            try:
+
+                print(os.getcwd())
+                source_path = "./pages" + parts[1]
+                with open(source_path, 'r', encoding='utf-8') as source:
+                    transmit(STATUS_OK, sock)
+                    for line in source:
+                        transmit(line.strip(),sock)
+            except OSError as error:
+                    log.warn("Failed to open or read file")
+                    log.warn("Requested file was {}".format(source_path))
+                    log.warn("Exception: {}".format(error))
+                    transmit(STATUS_NOT_FOUND, sock)
     else:
         log.info("Unhandled request: {}".format(request))
         transmit(STATUS_NOT_IMPLEMENTED, sock)
@@ -101,6 +124,7 @@ def respond(sock):
     sock.shutdown(socket.SHUT_RDWR)
     sock.close()
     return
+
 
 
 def transmit(msg, sock):
